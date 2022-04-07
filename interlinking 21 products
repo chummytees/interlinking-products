@@ -1,0 +1,147 @@
+ // Fetch and display products that are created after current product created_at date
+  let collectionOrderList = 'collection-names,LK_all'; // Order of collections to prioritise
+  const productsQty = 21;
+  const productID = {{ product.id }};
+  const cursor = btoa(`{"last_id":${productID},"last_value":"${productID}"}`); // This will instruct query to only search products that are created after current product
+  const productCollections = $('.product-collection-holder').text();
+  const orderList = collectionOrderList.split(',');
+  let fetchFromCollection = defaultCollection = 'homepage-pop'; // Default collection to fetch producs from
+  const STOREFRONT_ACCESS_TOKEN =  'something';
+  const GRAPHQL_URL = 'https://something.myshopify.com/api/2022-01/graphql.json';
+  // console.log('Collections of current product:',productCollections);
+  
+  collectionOrderList = collectionOrderList.toLowerCase();
+  $.each(collectionOrderList.split(","), function(index, value) {
+    if (productCollections.indexOf('*' + value + '*') >= 0) {
+      fetchFromCollection = value;
+      return false;
+    }
+  });
+  // console.log('Pulling products from:',fetchFromCollection);
+  
+  // Onready
+  thumbnailHandler();
+  fetchRelatedProducts(fetchFromCollection,cursor);
+  
+  function fetchRelatedProducts(collection,after) {
+    let ctr = 0;
+    const GRAPHQL_BODY  = () => {
+        return {
+        'async': true,
+        'crossDomain': true,
+        'method': 'POST',
+        'headers': {
+            'X-Shopify-Storefront-Access-Token': STOREFRONT_ACCESS_TOKEN,
+            'Content-Type': 'application/graphql',
+        },
+        'body': productQuery()
+        };
+    }
+    
+    let afterFilter = after != '' ? `after: "${after}"` : '';
+    let sortKey = after != '' ? `sortKey: ID` : ``;
+    const productQuery = () => `
+      query {
+        collectionByHandle(handle:"${collection}") {
+          products(
+          first: ${productsQty + 1}
+			${afterFilter}
+            ${sortKey}
+          ) {
+            edges {
+              node {
+                id
+                title
+                handle
+                images(first: 1) {
+                  edges {
+                    node {
+                      src
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    fetch(GRAPHQL_URL, GRAPHQL_BODY())
+      .then(res => res.json())
+      .then(products => {
+        if (products.data.collectionByHandle.products) {
+          const productsRes = products.data.collectionByHandle.products.edges;
+          var $cards = ``;
+          
+          // This will display products based on graphQL results
+          productsRes.forEach(function (item, index) {
+            const resultProductID = atob(item.node.id).replace('gid://shopify/Product/','');
+            const isntEnoughProducts = $('.related-products').find('.recomatic-product').length < productsQty;
+            const productDoesntExist = $('body').find(`.recomatic-product[data-id=${resultProductID}]`).length <= 0;
+
+            if (resultProductID != productID && isntEnoughProducts && productDoesntExist) {
+              var itemImg = item.node.images.edges[0].node.src.replace('.jpg','_168x175.jpg');
+              var $cards = `
+				<div class="recomatic-product" data-id="${item.node.id}">
+                  <a class="recomatic-content" href="/products/${item.node.handle}">
+                    <div class="recomatic-image-wrap recomatic-image-loaded">
+                      <img class="recomatic-image" alt="${item.node.title}" width="100%" height="100%" src="${itemImg}" loading="lazy">
+                    </div>
+                    <div class="recomatic-attributes">
+                      <div class="recomatic-title">${item.node.title}</div>
+                    </div>
+                  </a>
+                </div>`;
+            	ctr++;
+          	  $('.mr_products_in .related-products').append($cards);
+            }
+          });
+          
+          const findMore = productsQty - $('body').find('.related-products .recomatic-product').length;
+          if (findMore > 0) {
+            // console.log("Pulling",findMore,"more products from:",defaultCollection);
+  			fetchRelatedProducts(defaultCollection,'');
+          }
+        }
+    });
+  }
+  
+  function thumbnailHandler() {
+  	var containerWidth = $('.small-thumbnail-selectors').width();
+    var scrollableWidth = $('.small-thumbnail-selectors')[0].scrollWidth;
+    
+    if (scrollableWidth > containerWidth) {
+    	$('.thumbnail-next').addClass('visible');
+    }
+    
+    $('.thumbnail-next').click(function() {
+      event.preventDefault();
+      $('.small-thumbnail-selectors').animate({
+        scrollLeft: "+=0" + containerWidth
+      }, "500");
+    });
+    
+    $('.thumbnail-previous').click(function() {
+      event.preventDefault();
+      $('.small-thumbnail-selectors').animate({
+        scrollLeft: "-=0" + containerWidth
+      }, "500");
+    });
+    
+    $('.small-thumbnail-selectors').scroll(function (e) {
+        if ($('.small-thumbnail-selectors').scrollLeft() <= 0) {
+          $('.thumbnail-previous').removeClass('visible');
+        } else {
+          $('.thumbnail-previous').addClass('visible');
+        }
+		
+      	var scrollRight = scrollableWidth - ($('.small-thumbnail-selectors').scrollLeft() + containerWidth);
+        if (scrollRight <= 0) {
+            $('.thumbnail-next').removeClass('visible');
+        } else {
+            $('.thumbnail-next').addClass('visible');
+        }
+    });
+  }
+  
